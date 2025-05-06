@@ -17,7 +17,7 @@ jobs:
       with:
           kernel-url: https://github.com/dummygithub123/kernel_xiaomi_peridot
           kernel-dir: kernel-6.1
-          kernel-branch: taffy
+          kernel-branch: peridot-u-oss
           config: peridot_defconfig
           arch: arm64
           aosp-gcc: true
