@@ -1,4 +1,4 @@
- # A simple action usage
+# A simple action usage
 name: Build Kernel
 on:
   workflow_dispatch:
