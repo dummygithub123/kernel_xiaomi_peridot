@@ -25,12 +25,9 @@ jobs:
         run: |
           if [ ! -f MODULE.bazel ]; then
             echo "MODULE.bazel not found, creating default..."
-            cat > MODULE.bazel <<'EOF'
-module(name = "kernel_peridot")
-
-# Common dependencies
-bazel_dep(name = "bazel_skylib", version = "1.4.2")
-EOF
+            echo 'module(name = "kernel_peridot")' > MODULE.bazel
+            echo '' >> MODULE.bazel
+            echo 'bazel_dep(name = "bazel_skylib", version = "1.4.2")' >> MODULE.bazel
           fi
           cat MODULE.bazel
 
@@ -53,6 +50,5 @@ EOF
         uses: actions/upload-artifact@v4
         with:
           name: peridot-bazel-build
-          path: |
-            bazel-bin/**
+          path: bazel-bin/**
           if-no-files-found: warn
