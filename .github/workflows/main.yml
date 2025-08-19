@@ -12,7 +12,7 @@ jobs:
         uses: dabao1955/kernel_build_action@main
         with:
           kernel-url: https://github.com/dummygithub123/kernel_xiaomi_peridot
-          kernel-branch: taffy
+          kernel-branch: peridot_u_oss
           config: peridot_defconfig
           arch: arm64
           aosp-gcc: true
