@@ -11,7 +11,7 @@ jobs:
 
     steps:
       - name: Checkout Kernel Source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
       - name: Install Dependencies
         run: |
@@ -44,7 +44,7 @@ jobs:
           make -j$(nproc) O=out
 
       - name: Upload Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: kernel-build
           path: out/arch/arm64/boot/Image.gz
