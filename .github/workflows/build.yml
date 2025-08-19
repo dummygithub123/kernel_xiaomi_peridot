@@ -15,8 +15,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y curl unzip
-          curl -L https://github.com/bazelbuild/bazelisk/releases/download/v1.20.0/bazelisk-linux-amd64 -o /usr/local/bin/bazel
-          chmod +x /usr/local/bin/bazel
+          curl -L https://github.com/bazelbuild/bazelisk/releases/download/v1.20.0/bazelisk-linux-amd64 -o bazelisk
+          chmod +x bazelisk
+          sudo mv bazelisk /usr/local/bin/bazel
           bazel --version
 
       - name: List all Bazel targets
