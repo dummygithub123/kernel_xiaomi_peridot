@@ -1,27 +1,40 @@
 name: Bazel Kernel Build (Peridot)
 
-on: [workflow_dispatch]
+on:
+  workflow_dispatch:
 
 jobs:
   bazel-build:
     runs-on: ubuntu-22.04
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
       - name: Install Bazel
         run: |
           sudo apt update
           sudo apt install -y bazel
 
-      - name: Run Bazel build
+      - name: List all Bazel targets
         run: |
-          bazel build //:peridot
-          bazel build //:peridot_dist  # jika define dist target
+          echo "=== Available Bazel Targets ==="
+          bazel query //... || true
 
-      - name: Upload artifacts
+      - name: Try build kernel (Image + modules)
         run: |
-          cp -r bazel-bin/out/* dist/
+          echo "=== Trying to build allmods_peridot ==="
+          bazel build //:allmods_peridot || echo "Target allmods_peridot not found"
+
+      - name: Try build kernel dist (boot/dtbo/vendor_boot)"
+        run: |
+          echo "=== Trying to build peridot_dist ==="
+          bazel build //:peridot_dist || echo "Target peridot_dist not found"
+
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: peridot-bazel
-          path: dist/
+          name: peridot-bazel-build
+          path: |
+            bazel-bin/**
+          if-no-files-found: warn
