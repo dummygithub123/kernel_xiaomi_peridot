@@ -11,10 +11,13 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Install Bazel
+      - name: Install Bazelisk (Bazel)
         run: |
-          sudo apt update
-          sudo apt install -y bazel
+          sudo apt-get update
+          sudo apt-get install -y curl unzip
+          curl -L https://github.com/bazelbuild/bazelisk/releases/download/v1.20.0/bazelisk-linux-amd64 -o /usr/local/bin/bazel
+          chmod +x /usr/local/bin/bazel
+          bazel --version
 
       - name: List all Bazel targets
         run: |
@@ -26,7 +29,7 @@ jobs:
           echo "=== Trying to build allmods_peridot ==="
           bazel build //:allmods_peridot || echo "Target allmods_peridot not found"
 
-      - name: Try build kernel dist (boot/dtbo/vendor_boot)"
+      - name: Try build kernel dist (boot/dtbo/vendor_boot)
         run: |
           echo "=== Trying to build peridot_dist ==="
           bazel build //:peridot_dist || echo "Target peridot_dist not found"
