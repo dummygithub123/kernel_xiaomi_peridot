@@ -15,10 +15,24 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y curl unzip
-          curl -L https://github.com/bazelbuild/bazelisk/releases/download/v1.20.0/bazelisk-linux-amd64 -o bazelisk
-          chmod +x bazelisk
-          sudo mv bazelisk /usr/local/bin/bazel
+          mkdir -p $HOME/bin
+          curl -L https://github.com/bazelbuild/bazelisk/releases/download/v1.20.0/bazelisk-linux-amd64 -o $HOME/bin/bazel
+          chmod +x $HOME/bin/bazel
+          echo "$HOME/bin" >> $GITHUB_PATH
           bazel --version
+
+      - name: Ensure MODULE.bazel exists
+        run: |
+          if [ ! -f MODULE.bazel ]; then
+            echo "MODULE.bazel not found, creating default..."
+            cat > MODULE.bazel <<'EOF'
+module(name = "kernel_peridot")
+
+# Common dependencies
+bazel_dep(name = "bazel_skylib", version = "1.4.2")
+EOF
+          fi
+          cat MODULE.bazel
 
       - name: List all Bazel targets
         run: |
