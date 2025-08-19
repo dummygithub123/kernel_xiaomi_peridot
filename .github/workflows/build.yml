@@ -1,54 +1,50 @@
-name: Bazel Kernel Build (Peridot)
+name: Build Kernel (Bazel)
 
 on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
-  bazel-build:
-    runs-on: ubuntu-22.04
+  build:
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-      - name: Install Bazelisk (Bazel)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y curl unzip
-          mkdir -p $HOME/bin
-          curl -L https://github.com/bazelbuild/bazelisk/releases/download/v1.20.0/bazelisk-linux-amd64 -o $HOME/bin/bazel
-          chmod +x $HOME/bin/bazel
-          echo "$HOME/bin" >> $GITHUB_PATH
-          bazel --version
-
-      - name: Ensure MODULE.bazel exists
-        run: |
-          if [ ! -f MODULE.bazel ]; then
-            echo "MODULE.bazel not found, creating default..."
-            echo 'module(name = "kernel_peridot")' > MODULE.bazel
-            echo '' >> MODULE.bazel
-            echo 'bazel_dep(name = "bazel_skylib", version = "1.4.2")' >> MODULE.bazel
-          fi
-          cat MODULE.bazel
-
-      - name: List all Bazel targets
-        run: |
-          echo "=== Available Bazel Targets ==="
-          bazel query //... || true
-
-      - name: Try build kernel (Image + modules)
-        run: |
-          echo "=== Trying to build allmods_peridot ==="
-          bazel build //:allmods_peridot || echo "Target allmods_peridot not found"
-
-      - name: Try build kernel dist (boot/dtbo/vendor_boot)
-        run: |
-          echo "=== Trying to build peridot_dist ==="
-          bazel build //:peridot_dist || echo "Target peridot_dist not found"
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+      - name: Setup JDK 17 (required by Bazel)
+        uses: actions/setup-java@v3
         with:
-          name: peridot-bazel-build
-          path: bazel-bin/**
+          distribution: temurin
+          java-version: 17
+
+      - name: Install Bazelisk
+        run: |
+          sudo curl -L https://github.com/bazelbuild/bazelisk/releases/download/v1.19.0/bazelisk-linux-amd64 -o /usr/local/bin/bazel
+          sudo chmod +x /usr/local/bin/bazel
+
+      - name: Ensure BUILD.bazel for kleaf exists
+        run: |
+          mkdir -p build/kernel/kleaf
+          if [ ! -f build/kernel/kleaf/BUILD.bazel ]; then
+            echo '# Auto-generated BUILD.bazel for Bazel package recognition' > build/kernel/kleaf/BUILD.bazel
+            echo 'exports_files(["common_kernels.bzl"])' >> build/kernel/kleaf/BUILD.bazel
+          fi
+
+      - name: Run Bazel Build
+        run: |
+          echo "=== Starting kernel build ==="
+          bazel build //:peridot_dist || bazel build //:allmods_peridot
+          ls -lh bazel-bin || true
+
+      - name: Upload boot.img artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: boot-image
+          path: |
+            bazel-bin/**/*.img
+            bazel-bin/**/boot.img
           if-no-files-found: warn
