@@ -1,4 +1,4 @@
-name: Build Xiaomi Peridot Kernel (Poco F6)
+name: Build Xiaomi Peridot Kernel (boot.img)
 
 on:
   workflow_dispatch:
@@ -15,6 +15,14 @@ on:
         description: "Enable LTO (thin/full/none)"
         required: true
         default: "thin"
+      os_version:
+        description: "Android OS version (A.B.C)"
+        required: true
+        default: "14.0.0"
+      os_patch_level:
+        description: "Android patch level (YYYY-MM)"
+        required: true
+        default: "2025-08"
 
 jobs:
   build:
@@ -27,6 +35,7 @@ jobs:
       CLANG_DIR: ${{ github.workspace }}/toolchains/clang
       GCC64_DIR: ${{ github.workspace }}/toolchains/gcc64
       PATH: ${{ github.workspace }}/toolchains/clang/bin:${{ github.workspace }}/toolchains/gcc64/bin:${{ env.PATH }}
+
     steps:
       - name: Checkout kernel source
         uses: actions/checkout@v4
@@ -77,9 +86,36 @@ jobs:
             gzip -c out/arch/arm64/boot/Image > out/arch/arm64/boot/Image.gz
           fi
 
+      - name: Prepare mkbootimg
+        run: |
+          git clone --depth=1 https://android.googlesource.com/platform/system/tools/mkbootimg mkbootimg
+
+      - name: Create dummy ramdisk
+        run: |
+          mkdir -p obj/ramdisk_root
+          echo -e '#!/bin/sh\necho "Dummy ramdisk"\nexec /init' > obj/ramdisk_root/init
+          chmod +x obj/ramdisk_root/init
+          (cd obj/ramdisk_root && find . | cpio -H newc -o) > obj/ramdisk.cpio
+          gzip -c obj/ramdisk.cpio > obj/ramdisk.cpio.gz
+
+      - name: Pack boot.img
+        run: |
+          KERNEL_PATH="kernel/out/arch/arm64/boot/${{ inputs.compress == 'gzip' && 'Image.gz' || 'Image' }}"
+          RAMDISK_PATH="obj/ramdisk.cpio.gz"
+          mkdir -p out/boot
+          python3 mkbootimg/mkbootimg.py \
+            --kernel "$KERNEL_PATH" \
+            --ramdisk "$RAMDISK_PATH" \
+            --header_version 4 \
+            --os_version "${{ inputs.os_version }}" \
+            --os_patch_level "${{ inputs.os_patch_level }}" \
+            --cmdline "console=tty0 console=ttyS0,115200n8 earlycon=uart8250,mmio32,0x09000000 androidboot.hardware=peridot" \
+            --output out/boot/boot.img
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: peridot-kernel-${{ github.run_number }}
+          name: peridot-bootimg-${{ github.run_number }}
           path: |
             kernel/out/arch/arm64/boot/Image*
+            out/boot/boot.img
