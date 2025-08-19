@@ -34,7 +34,6 @@ jobs:
       SUBARCH: arm64
       CLANG_DIR: ${{ github.workspace }}/toolchains/clang
       GCC64_DIR: ${{ github.workspace }}/toolchains/gcc64
-      PATH: ${{ github.workspace }}/toolchains/clang/bin:${{ github.workspace }}/toolchains/gcc64/bin:${{ env.PATH }}
 
     steps:
       - name: Checkout kernel source
