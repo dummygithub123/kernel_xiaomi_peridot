@@ -1,2 +1,21 @@
- name: Android Kernel Build Action
- jobs: dabao1955/kernel_build_action@v1.8.3
+name: CI
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-kernel:
+    name: Build Kernel
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Build
+        uses: dabao1955/kernel_build_action@main
+        with:
+          kernel-url: https://github.com/dummygithub123/kernel_xiaomi_peridot
+          kernel-branch: taffy
+          config: peridot_defconfig
+          arch: arm64
+          aosp-gcc: true
+          aosp-clang: true
+          android-version: 14
+          aosp-clang-version: r383902
