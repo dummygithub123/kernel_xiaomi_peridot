@@ -1,172 +1,85 @@
-name: Build GKI 6.1 → boot.img
+name: Build Xiaomi Peridot Kernel (Poco F6)
 
-on: workflow_dispatch: inputs: kernel_repo: description: "Git URL kernel source (AOSP common or your fork)" required: true default: "https://android.googlesource.com/kernel/common" kernel_ref: description: "Git ref/branch/tag to checkout" required: true default: "android12-6.1" defconfig: description: "Kernel defconfig" required: true default: "gki_defconfig" lto: description: "Enable LTO (thin/full/none)" required: true default: "thin" kernel_compress: description: "Kernel image compression (none|gzip)" required: true default: "gzip" kernel_cmdline: description: "Extra kernel cmdline (appended)" required: false default: "androidboot.hardware=gki" os_version: description: "Android OS version (A.B.C) for boot header" required: true default: "14.0.0" os_patch_level: description: "Android patch level (YYYY-MM) for boot header" required: true default: "2025-08" sign_avb: description: "Sign boot.img with AVB (true/false)" required: true default: "false" avb_key_secret_name: description: "Secrets name holding base64-encoded AVB RSA2048 private key (used if sign_avb=true)" required: false default: "AVB_PK8_BASE64"
+on:
+  workflow_dispatch:
+    inputs:
+      defconfig:
+        description: "Kernel defconfig"
+        required: true
+        default: "peridot_defconfig"
+      compress:
+        description: "Compress Image (gzip/none)"
+        required: true
+        default: "gzip"
+      lto:
+        description: "Enable LTO (thin/full/none)"
+        required: true
+        default: "thin"
 
-permissions: contents: read actions: read id-token: write
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    env:
+      CC: clang
+      LD: ld.lld
+      ARCH: arm64
+      SUBARCH: arm64
+      CLANG_DIR: ${{ github.workspace }}/toolchains/clang
+      GCC64_DIR: ${{ github.workspace }}/toolchains/gcc64
+      PATH: ${{ github.workspace }}/toolchains/clang/bin:${{ github.workspace }}/toolchains/gcc64/bin:${{ env.PATH }}
+    steps:
+      - name: Checkout kernel source
+        uses: actions/checkout@v4
+        with:
+          path: kernel
 
-jobs: build: runs-on: ubuntu-22.04 env: CC: clang LD: ld.lld ARCH: arm64 SUBARCH: arm64 # Paths filled during steps CLANG_DIR: ${{ github.workspace }}/toolchains/clang GCC64_DIR: ${{ github.workspace }}/toolchains/gcc64 PATH: ${{ github.workspace }}/toolchains/clang/bin:${{ github.workspace }}/toolchains/gcc64/bin:${{ env.PATH }}
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y bc bison build-essential clang curl flex git \
+            libelf-dev libssl-dev lld llvm lz4 python3 rsync tar cpio \
+            unzip wget xz-utils libncurses5-dev dwarves
 
-steps:
-  - name: Checkout workflow repo
-    uses: actions/checkout@v4
+      - name: Download AOSP toolchains
+        run: |
+          mkdir -p toolchains && cd toolchains
+          curl -L https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/master/clang-r450784d.tar.gz -o clang.tar.gz
+          mkdir clang && tar -xf clang.tar.gz -C clang
+          curl -L https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/master.tar.gz -o gcc64.tar.gz
+          mkdir gcc64 && tar -xf gcc64.tar.gz -C gcc64
 
-  - name: Install build dependencies
-    run: |
-      sudo apt-get update
-      sudo apt-get install -y --no-install-recommends \
-        bc bison build-essential ccache clang curl flex \
-        git gcc g++ libelf-dev libssl-dev lld llvm \
-        lz4 pkg-config python3 python3-pip rsync tar \
-        u-boot-tools unzip wget xz-utils cpio \
-        libncurses5-dev dwarves
-
-  - name: Prepare toolchains (AOSP prebuilts)
-    run: |
-      set -euxo pipefail
-      mkdir -p toolchains && cd toolchains
-      # Clang/LLVM (r450784d is commonly used with 6.1)
-      curl -L \
-        "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/master/clang-r450784d.tar.gz" \
-        -o clang.tar.gz
-      mkdir -p clang && tar -xf clang.tar.gz -C clang
-
-      # GCC cross for aarch64 (used for certain tools like GCC's libgcc)
-      curl -L \
-        "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/master.tar.gz" \
-        -o gcc64.tar.gz
-      mkdir -p gcc64 && tar -xf gcc64.tar.gz -C gcc64
-
-  - name: Fetch kernel source
-    run: |
-      set -euxo pipefail
-      git clone --depth=1 --branch "${{ inputs.kernel_ref }}" "${{ inputs.kernel_repo }}" kernel
-
-  - name: Configure kernel
-    working-directory: kernel
-    run: |
-      set -euxo pipefail
-      export PATH="${CLANG_DIR}/bin:${GCC64_DIR}/bin:${PATH}"
-      export CROSS_COMPILE=aarch64-linux-android-
-      export CLANG_TRIPLE=aarch64-linux-gnu-
-      export LLVM=1
-      export LLVM_IAS=1
-      mkdir -p out
-      make O=out ${{ inputs.defconfig }}
-      case "${{ inputs.lto }}" in
-        thin) scripts/config --file out/.config -e LTO_CLANG -e LTO_CLANG_THIN -d LTO_NONE ;;
-        full) scripts/config --file out/.config -e LTO_CLANG -e LTO_CLANG_FULL -d LTO_NONE ;;
-        none) scripts/config --file out/.config -d LTO_CLANG -d LTO_CLANG_THIN -d LTO_CLANG_FULL -e LTO_NONE ;;
-      esac
-      yes "" | make O=out olddefconfig
-
-  - name: Build kernel (Image & modules)
-    working-directory: kernel
-    run: |
-      set -euxo pipefail
-      export PATH="${CLANG_DIR}/bin:${GCC64_DIR}/bin:${PATH}"
-      export CROSS_COMPILE=aarch64-linux-android-
-      export CLANG_TRIPLE=aarch64-linux-gnu-
-      export LLVM=1
-      export LLVM_IAS=1
-      CORES=$(nproc)
-      make -j"$CORES" O=out
-      # Optionally compress Image
-      if [ "${{ inputs.kernel_compress }}" = "gzip" ]; then
-        gzip -c out/arch/arm64/boot/Image > out/arch/arm64/boot/Image.gz
-      fi
-
-  - name: Prepare mkbootimg & avbtool
-    run: |
-      set -euxo pipefail
-      mkdir -p tools && cd tools
-      # mkbootimg from AOSP
-      git clone --depth=1 https://android.googlesource.com/platform/system/tools/mkbootimg
-      # avbtool (python script)
-      git clone --depth=1 https://android.googlesource.com/platform/external/avb
-      echo "Installed mkbootimg & avbtool"
-
-  - name: Create minimal ramdisk (placeholder)
-    run: |
-      set -euxo pipefail
-      mkdir -p obj/ramdisk_root
-      echo -e '#!/bin/sh\necho "Minimal ramdisk (placeholder)"\nsleep 1\nexec /init' > obj/ramdisk_root/init
-      chmod +x obj/ramdisk_root/init
-      (cd obj/ramdisk_root && find . | cpio -H newc -o) > obj/ramdisk.cpio
-      gzip -c obj/ramdisk.cpio > obj/ramdisk.cpio.gz
-
-  - name: Pack boot.img (boot header v4)
-    run: |
-      set -euxo pipefail
-      KERNEL_PATH="kernel/out/arch/arm64/boot/${{ inputs.kernel_compress == 'gzip' && 'Image.gz' || 'Image' }}"
-      RAMDISK_PATH="obj/ramdisk.cpio.gz"
-      BOOT_OUT="out/boot"
-      mkdir -p "$BOOT_OUT"
-      # Derive OS version/patch into mkbootimg friendly values
-      OS_VER=${{ inputs.os_version }}
-      OS_PATCH=${{ inputs.os_patch_level }}
-      # Append a safe common cmdline; extend with user input
-      CMDLINE_BASE="console=tty0 console=ttyS0,115200n8 earlycon=uart8250,mmio32,0x09000000"
-      CMDLINE_USER="${{ inputs.kernel_cmdline }}"
-      ALL_CMDLINE="$CMDLINE_BASE $CMDLINE_USER"
-
-      python3 tools/mkbootimg/mkbootimg.py \
-        --kernel "$KERNEL_PATH" \
-        --ramdisk "$RAMDISK_PATH" \
-        --header_version 4 \
-        --os_version "$OS_VER" \
-        --os_patch_level "$OS_PATCH" \
-        --cmdline "$ALL_CMDLINE" \
-        --output "$BOOT_OUT/boot.img"
-
-  - name: (Optional) AVB sign boot.img
-    if: ${{ inputs.sign_avb == 'true' }}
-    run: |
-      set -euxo pipefail
-      BOOT_OUT="out/boot"
-      mkdir -p "$BOOT_OUT"
-      # Load private key from GitHub Secret (base64-encoded pk8 or PEM)
-      if [ -n "${{ secrets[inputs.avb_key_secret_name] }}" ]; then
-        echo "Using provided AVB key from secrets: ${{ inputs.avb_key_secret_name }}"
-        echo "${{ secrets[inputs.avb_key_secret_name] }}" | base64 -d > "$BOOT_OUT/avb_key.pem" || echo "Secret not base64, writing raw" && echo "${{ secrets[inputs.avb_key_secret_name] }}" > "$BOOT_OUT/avb_key.pem"
-      else
-        echo "No AVB key secret found; generating a temporary test key (RSA-2048)."
-        openssl genrsa -out "$BOOT_OUT/avb_key.pem" 2048
-      fi
-      python3 tools/avb/avbtool.py add_hash_footer \
-        --image "$BOOT_OUT/boot.img" \
-        --partition_name boot \
-        --partition_size 0 \
-        --key "$BOOT_OUT/avb_key.pem" \
-        --algorithm SHA256_RSA2048 \
-        --output "$BOOT_OUT/boot-signed.img"
-
-  - name: Summarize artifacts
-    run: |
-      set -euxo pipefail
-      ls -lah kernel/out/arch/arm64/boot || true
-      ls -lah out/boot || true
-
-  - name: Upload artifacts
-    uses: actions/upload-artifact@v4
-    with:
-      name: gki-6.1-build-${{ github.run_number }}
-      path: |
-        kernel/out/arch/arm64/boot/Image*
-        out/boot/boot*.img
-        out/boot/avb_key.pem
-      if-no-files-found: warn
-
-          export SUBARCH=arm64
-          export CROSS_COMPILE=$GITHUB_WORKSPACE/toolchains/gcc64/bin/aarch64-linux-android-
-          export CC=clang
-          export LD=ld.lld
+      - name: Configure kernel
+        working-directory: kernel
+        run: |
+          export PATH="${CLANG_DIR}/bin:${GCC64_DIR}/bin:${PATH}"
+          export CROSS_COMPILE=aarch64-linux-android-
           export CLANG_TRIPLE=aarch64-linux-gnu-
-          
-          make O=out gki_defconfig
-          make -j$(nproc) O=out
+          export LLVM=1
+          export LLVM_IAS=1
+          make O=out ${{ inputs.defconfig }}
+          case "${{ inputs.lto }}" in
+            thin) scripts/config --file out/.config -e LTO_CLANG -e LTO_CLANG_THIN -d LTO_NONE ;;
+            full) scripts/config --file out/.config -e LTO_CLANG -e LTO_CLANG_FULL -d LTO_NONE ;;
+            none) scripts/config --file out/.config -d LTO_CLANG -d LTO_CLANG_THIN -d LTO_CLANG_FULL -e LTO_NONE ;;
+          esac
+          yes "" | make O=out olddefconfig
 
-      - name: Upload Artifact
+      - name: Build kernel
+        working-directory: kernel
+        run: |
+          export PATH="${CLANG_DIR}/bin:${GCC64_DIR}/bin:${PATH}"
+          export CROSS_COMPILE=aarch64-linux-android-
+          export CLANG_TRIPLE=aarch64-linux-gnu-
+          export LLVM=1
+          export LLVM_IAS=1
+          make -j$(nproc) O=out
+          if [ "${{ inputs.compress }}" = "gzip" ]; then
+            gzip -c out/arch/arm64/boot/Image > out/arch/arm64/boot/Image.gz
+          fi
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: kernel-build
-          path: out/arch/arm64/boot/Image.gz
+          name: peridot-kernel-${{ github.run_number }}
+          path: |
+            kernel/out/arch/arm64/boot/Image*
