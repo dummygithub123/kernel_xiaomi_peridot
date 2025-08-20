@@ -12,43 +12,47 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      KERNEL_NAME: "peridot"
-      CROSS_COMPILE: "aarch64-linux-gnu-"
-      ARCH: "arm64"
+      ARCH: arm64
+      CROSS_COMPILE: aarch64-linux-gnu-
 
     steps:
+      # 1. Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Install Dependencies
+      # 2. Install dependencies & cross compiler
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bc ccache libncurses-dev git flex bison libssl-dev
+          sudo apt-get install -y build-essential bc ccache libncurses-dev git flex bison libssl-dev gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
-      - name: Setup Compiler (GCC AOSP)
+      # 3. Export environment variables
+      - name: Set environment
         run: |
-          git clone https://github.com/kdrag0n/proton-clang.git clang
-          export PATH=$(pwd)/clang/bin:$PATH
+          export ARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          echo "ARCH=$ARCH" >> $GITHUB_ENV
+          echo "CROSS_COMPILE=$CROSS_COMPILE" >> $GITHUB_ENV
 
+      # 4. Configure Kernel (GKI)
       - name: Configure Kernel
         run: |
           make O=out gki_defconfig
 
+      # 5. Build Kernel
       - name: Build Kernel
         run: |
-          make -j$(nproc) O=out \
-               CC=clang \
-               CROSS_COMPILE=aarch64-linux-gnu- \
-               LLVM=1
+          make -j$(nproc) O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-
 
-      - name: Archive Kernel Image
+      # 6. Archive Kernel Image & dtb
+      - name: Archive Kernel
         run: |
           mkdir -p kernel_build
           cp out/arch/arm64/boot/Image.gz-dtb kernel_build/
-        shell: bash
 
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+      # 7. Upload artifact
+      - name: Upload Kernel Artifact
+        uses: actions/upload-artifact@v3
         with:
           name: kernel-image
           path: kernel_build/
