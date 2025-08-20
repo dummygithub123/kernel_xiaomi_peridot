@@ -1,0 +1,49 @@
+name: Build Kernel (Kleaf)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang flex bison \
+            gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+            gcc-arm-linux-gnueabi g++-arm-linux-gnueabi \
+            bc git curl unzip zip wget python3 python3-pip
+
+      - name: Install Bazelisk
+        run: |
+          curl -L https://github.com/bazelbuild/bazelisk/releases/download/v1.19.0/bazelisk-linux-amd64 -o bazelisk
+          chmod +x bazelisk
+          sudo mv bazelisk /usr/local/bin/bazel
+          bazel version
+
+      - name: Clone Kleaf
+        run: |
+          mkdir -p build/kernel
+          git clone --depth=1 https://android.googlesource.com/kernel/build build/kernel/build
+          ln -sf build/kernel/build/kleaf build/kernel/kleaf
+          # pastikan folder kleaf ada
+          mkdir -p build/kernel/build/kleaf
+          # buat BUILD.bazel jika belum ada
+          if [ ! -f build/kernel/build/kleaf/BUILD.bazel ]; then
+            echo 'exports_files(glob(["**/*.bzl"]))' > build/kernel/build/kleaf/BUILD.bazel
+          fi
+
+      - name: Build kernel
+        run: |
+          bazel build //:kernel_xiaomi_peridot_dist
+
+      - name: Upload boot.img
+        uses: actions/upload-artifact@v4
+        with:
+          name: boot-img
+          path: bazel-bin/kernel_xiaomi_peridot_dist/boot.img
