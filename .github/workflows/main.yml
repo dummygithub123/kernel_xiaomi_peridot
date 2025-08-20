@@ -1,6 +1,10 @@
-name: Build Kernel (Kleaf)
+name: Kernel Build (Kleaf)
 
 on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -8,61 +12,54 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout kernel repo
+      - name: Checkout source
         uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bc bison flex git curl zip unzip lz4 zstd libssl-dev openjdk-17-jdk python3 python3-pip
+          sudo apt-get install -y build-essential bc bison flex git curl zip \
+            libncurses5-dev libssl-dev ccache python3 python3-pip unzip
 
-      - name: Setup Bazel (via Bazelisk)
-        uses: bazel-contrib/setup-bazel@0.15.0
-        with:
-          bazelisk-cache: true
-          repository-cache: true
+      - name: Setup Bazel
+        uses: bazelbuild/setup-bazelisk@v3
 
       - name: Clone Kleaf infra
         run: |
           set -eux
           mkdir -p build/kernel
           git clone --depth=1 https://android.googlesource.com/kernel/build build/kernel/build
-          ln -sf build/kernel/build/kleaf build/kernel/kleaf
-          # Pastikan kleaf adalah Bazel package
-          if [ ! -f build/kernel/kleaf/BUILD.bazel ]; then
-            printf 'exports_files(glob(["**/*.bzl"]))\n' > build/kernel/kleaf/BUILD.bazel
+          
+          # kalau ada kleaf di dalam build, symlink-kan
+          if [ -d build/kernel/build/kleaf ]; then
+            ln -sf ../build/kleaf build/kernel/kleaf
+          else
+            # bikin dummy kleaf biar Bazel gak error
+            mkdir -p build/kernel/kleaf
           fi
+          
+          # bikin BUILD.bazel agar jadi package valid
+          echo 'exports_files(glob(["**/*.bzl"]))' > build/kernel/kleaf/BUILD.bazel
 
-      - name: Ensure MODULE.bazel exists
+      - name: Create MODULE.bazel if missing
         run: |
-          set -eux
           if [ ! -f MODULE.bazel ]; then
-            : > MODULE.bazel
-            printf 'module(\n' >> MODULE.bazel
-            printf '    name = "kernel_xiaomi_peridot",\n' >> MODULE.bazel
-            printf '    version = "1.0",\n' >> MODULE.bazel
-            printf ')\n' >> MODULE.bazel
-            printf '\n' >> MODULE.bazel
-            printf 'bazel_dep(name = "bazel_skylib", version = "1.4.2")\n' >> MODULE.bazel
-            printf 'bazel_dep(name = "rules_cc", version = "0.0.8")\n' >> MODULE.bazel
-          fi
-          echo "=== MODULE.bazel ==="
-          cat MODULE.bazel
+            cat > MODULE.bazel <<'EOF'
+module(
+    name = "kernel_xiaomi_peridot",
+    version = "1.0",
+)
 
-      - name: Build kernel (Kleaf)
+bazel_dep(name = "bazel_skylib", version = "1.4.2")
+EOF
+          fi
+
+      - name: Build kernel
         run: |
-          set -eux
-          echo ">>> Trying //:peridot_dist ..."
-          if ! bazel build //:peridot_dist --verbose_failures; then
-            echo ">>> Fallback to //:allmods_peridot ..."
-            bazel build //:allmods_peridot --verbose_failures
-          fi
-          echo "=== bazel-bin ==="
-          ls -lah bazel-bin || true
+          bazel build //:peridot_dist || bazel build //:allmods_peridot
 
-      - name: Upload build artifacts
+      - name: Upload boot.img artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kernel-artifacts
-          path: bazel-bin/**
-          if-no-files-found: warn
+          name: boot-image
+          path: bazel-bin/*/boot.img
