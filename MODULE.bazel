@@ -1,0 +1,7 @@
+module(
+    name = "kernel_xiaomi_peridot",
+    version = "1.0",
+)
+
+# Dependensi dasar yang dipakai build rules Google/Android
+bazel_dep(name = "bazel_skylib", version = "1.4.2")
