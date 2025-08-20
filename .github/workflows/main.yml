@@ -1,36 +1,33 @@
-name: Kernel Build (msm.peridot)
+name: Build Kernel with Python
 
 on:
   push:
     branches: [ main ]
-  pull_request:
 
 jobs:
   build:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout source
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup build environment
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bc bison flex libssl-dev \
-            libncurses5-dev libncursesw5-dev gcc clang lld python3 wget git
+          sudo apt-get install -y build-essential clang lld gcc-aarch64-linux-gnu
 
-      - name: Clone kernel build tools
+      - name: Run Python Bazel build
         run: |
-          mkdir -p build/kernel
-          git clone --depth=1 https://android.googlesource.com/kernel/build build/kernel/build
-
-      - name: Start kernel build (msm.peridot)
-        run: |
-          export BUILD_CONFIG=build.config.msm.peridot
-          bash build/kernel/build/build.sh
+          python3 build_with_bazel.py
 
       - name: Upload kernel artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: kernel-msm-peridot
+          name: kernel-artifacts
           path: out/**/*.img
