@@ -28,33 +28,24 @@ jobs:
       - name: Clone Kleaf + bazel_common_rules
         run: |
           mkdir -p build/kernel
-          # Bersihkan dulu biar tidak bentrok dengan sisa run sebelumnya
           rm -rf build/kernel/kleaf build/kernel/build build/bazel_common_rules
-          
-          # Clone kernel build (Kleaf)
           git clone --depth=1 https://android.googlesource.com/kernel/build build/kernel/build
           ln -sf build/kernel/build/kleaf build/kernel/kleaf
-          
-          # Clone bazel_common_rules
           git clone --depth=1 https://android.googlesource.com/kernel/bazel_common_rules build/bazel_common_rules
-          
-          # Tambah BUILD.bazel minimal supaya dikenali bazel
           echo 'exports_files(glob(["**/*.bzl"]))' > build/kernel/kleaf/BUILD.bazel
           echo 'exports_files(glob(["**/*.bzl"]))' > build/bazel_common_rules/BUILD.bazel
 
       - name: Prepare MODULE.bazel
         run: |
-          cat > MODULE.bazel <<'EOF'
-module(
-    name = "kernel_xiaomi_peridot",
-    version = "1.0",
-)
-bazel_dep(name = "bazel_skylib", version = "1.4.2")
-local_path_override(
-    module_name = "bazel_common_rules",
-    path = "build/bazel_common_rules",
-)
-EOF
+          echo 'module(' > MODULE.bazel
+          echo '    name = "kernel_xiaomi_peridot",' >> MODULE.bazel
+          echo '    version = "1.0",' >> MODULE.bazel
+          echo ')' >> MODULE.bazel
+          echo 'bazel_dep(name = "bazel_skylib", version = "1.4.2")' >> MODULE.bazel
+          echo 'local_path_override(' >> MODULE.bazel
+          echo '    module_name = "bazel_common_rules",' >> MODULE.bazel
+          echo '    path = "build/bazel_common_rules",' >> MODULE.bazel
+          echo ')' >> MODULE.bazel
 
       - name: Build kernel
         run: |
