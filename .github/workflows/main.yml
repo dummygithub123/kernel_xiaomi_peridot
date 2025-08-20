@@ -17,12 +17,12 @@ jobs:
           sudo apt-get install -y git wget curl unzip python3 python3-pip build-essential gcc g++ make \
             openjdk-11-jdk pkg-config zip zlib1g-dev
 
-      - name: Set up Bazel
+      - name: Install Bazelisk (Bazel wrapper)
         run: |
-          sudo apt-get install -y apt-transport-https curl gnupg
-          curl -fsSL https://bazel.build/bazel-release.pub.gpg | sudo gpg --dearmor -o /usr/share/keyrings/bazel.gpg
-          echo "deb [signed-by=/usr/share/keyrings/bazel.gpg] https://bazel.build/apt stable jdk1.8" | sudo tee /etc/apt/sources.list.d/bazel.list
-          sudo apt-get update && sudo apt-get install -y bazel
+          sudo curl -L https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-amd64 \
+            -o /usr/local/bin/bazel
+          sudo chmod +x /usr/local/bin/bazel
+          bazel version
 
       - name: Clone Kleaf
         run: |
