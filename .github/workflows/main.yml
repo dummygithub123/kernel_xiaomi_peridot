@@ -1,4 +1,4 @@
-name: Build Kernel Peridot with Bazel (Full)
+name: Kernel Build (msm.peridot)
 
 on:
   push:
@@ -10,51 +10,27 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout repository
+      - name: Checkout source
         uses: actions/checkout@v4
 
       - name: Setup build environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            git curl python3 python3-pip unzip build-essential \
-            clang lld gcc-aarch64-linux-gnu bison flex libncurses5-dev libssl-dev
+          sudo apt-get install -y build-essential bc bison flex libssl-dev \
+            libncurses5-dev libncursesw5-dev gcc clang lld python3 wget git
 
-      - name: Install Bazelisk (Bazel wrapper)
-        run: |
-          curl -LO "https://github.com/bazelbuild/bazelisk/releases/download/v1.23.0/bazelisk-linux-amd64"
-          chmod +x bazelisk-linux-amd64
-          sudo mv bazelisk-linux-amd64 /usr/local/bazel
-
-      - name: Ensure MODULE.bazel exists
-        run: |
-          if [ ! -f MODULE.bazel ]; then
-            echo 'module(name = "kernel_xiaomi_peridot", version = "1.0")' > MODULE.bazel
-          fi
-
-      - name: Clone required subrepos
+      - name: Clone kernel build tools
         run: |
           mkdir -p build/kernel
-          # Clone AOSP kernel build repo
           git clone --depth=1 https://android.googlesource.com/kernel/build build/kernel/build
-          # Clone Bazel common rules if not exists
-          if [ ! -d build/bazel_common_rules ]; then
-            git clone --depth=1 https://android.googlesource.com/kernel/bazel_common_rules build/bazel_common_rules
-          fi
 
-      - name: Create minimal BUILD.bazel for kleaf
+      - name: Start kernel build (msm.peridot)
         run: |
-          if [ ! -f build/kernel/build/kleaf/BUILD.bazel ]; then
-            mkdir -p build/kernel/build/kleaf
-            echo 'exports_files(glob(["**/*.bzl"]))' > build/kernel/build/kleaf/BUILD.bazel
-          fi
-
-      - name: Run Python Bazel build
-        run: |
-          python3 build_with_bazel.py
+          export BUILD_CONFIG=build.config.msm.peridot
+          bash build/kernel/build/build.sh
 
       - name: Upload kernel artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: kernel-peridot-artifacts
+          name: kernel-msm-peridot
           path: out/**/*.img
