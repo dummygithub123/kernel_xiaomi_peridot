@@ -1,0 +1,9 @@
+- name: Clone dependencies
+  run: |
+    mkdir -p build/kernel
+    git clone --depth=1 https://android.googlesource.com/kernel/build build/kernel/build
+    ln -sf build/kernel/build/kleaf build/kernel/kleaf
+    git clone --depth=1 https://android.googlesource.com/kernel/bazel_common_rules build/bazel_common_rules
+    # bikin BUILD.bazel dummy biar kleaf dikenali
+    echo 'exports_files(glob(["**/*.bzl"]))' > build/kernel/kleaf/BUILD.bazel
+    echo 'exports_files(glob(["**/*.bzl"]))' > build/bazel_common_rules/BUILD.bazel
