@@ -1,29 +1,25 @@
-name: Build Kernel (Kleaf)
+name: Build Kernel with Kleaf
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
 
 jobs:
   build:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout source
+      - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential clang flex bison \
-            gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
-            gcc-arm-linux-gnueabi g++-arm-linux-gnueabi \
-            bc git curl unzip zip wget python3 python3-pip
 
       - name: Install Bazelisk
         run: |
-          curl -L https://github.com/bazelbuild/bazelisk/releases/download/v1.19.0/bazelisk-linux-amd64 -o bazelisk
-          chmod +x bazelisk
-          sudo mv bazelisk /usr/local/bin/bazel
+          sudo apt-get update
+          sudo apt-get install -y curl unzip zip python3
+          curl -L https://github.com/bazelbuild/bazelisk/releases/download/v1.20.0/bazelisk-linux-amd64 -o /usr/local/bin/bazel
+          chmod +x /usr/local/bin/bazel
           bazel version
 
       - name: Clone Kleaf
@@ -31,19 +27,23 @@ jobs:
           mkdir -p build/kernel
           git clone --depth=1 https://android.googlesource.com/kernel/build build/kernel/build
           ln -sf build/kernel/build/kleaf build/kernel/kleaf
-          # pastikan folder kleaf ada
           mkdir -p build/kernel/build/kleaf
-          # buat BUILD.bazel jika belum ada
-          if [ ! -f build/kernel/build/kleaf/BUILD.bazel ]; then
-            echo 'exports_files(glob(["**/*.bzl"]))' > build/kernel/build/kleaf/BUILD.bazel
-          fi
+          cat > build/kernel/build/kleaf/BUILD.bazel <<'EOF'
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "kernel.bzl",
+])
+
+exports_files(glob(["**/*.bzl"]))
+EOF
 
       - name: Build kernel
         run: |
-          bazel build //:kernel_xiaomi_peridot_dist
+          bazel build //:kernel_xiaomi_peridot_dist --verbose_failures
 
-      - name: Upload boot.img
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: boot-img
-          path: bazel-bin/kernel_xiaomi_peridot_dist/boot.img
+          name: kernel-build
+          path: bazel-bin/*
