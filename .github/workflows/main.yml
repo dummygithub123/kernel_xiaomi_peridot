@@ -1,8 +1,9 @@
-name: Build Kernel with Python
+name: Build Kernel Peridot Full
 
 on:
   push:
     branches: [ main ]
+  pull_request:
 
 jobs:
   build:
@@ -12,21 +13,45 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: 3.11
-
-      - name: Install dependencies
+      - name: Setup build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential clang lld gcc-aarch64-linux-gnu
+          sudo apt-get install -y \
+            build-essential clang lld gcc-aarch64-linux-gnu \
+            bison flex libncurses5-dev libssl-dev git curl \
+            python3 python3-pip unzip
+
+      - name: Install Bazelisk
+        run: |
+          curl -LO "https://github.com/bazelbuild/bazelisk/releases/download/v1.23.0/bazelisk-linux-amd64"
+          chmod +x bazelisk-linux-amd64
+          sudo mv bazelisk-linux-amd64 /usr/local/bin/bazel
+          bazel version
+
+      - name: Ensure MODULE.bazel exists
+        run: |
+          if [ ! -f MODULE.bazel ]; then
+            echo 'module(name = "kernel_xiaomi_peridot", version = "1.0")' > MODULE.bazel
+          fi
+
+      - name: Clone required subrepos
+        run: |
+          mkdir -p build/kernel
+          git clone --depth=1 https://android.googlesource.com/kernel/build build/kernel/build
+          if [ ! -d build/bazel_common_rules ]; then
+            git clone --depth=1 https://android.googlesource.com/kernel/bazel_common_rules build/bazel_common_rules
+          fi
+
+      - name: Create BUILD.bazel for kleaf
+        run: |
+          mkdir -p build/kernel/build/kleaf
+          echo 'exports_files(glob(["**/*.bzl"]))' > build/kernel/build/kleaf/BUILD.bazel
 
       - name: Run Python Bazel build
         run: |
-          python3 build_with_bazel.py
+          python3 -u build.with.bazel.py
 
-      - name: Upload kernel artifacts
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: kernel-artifacts
