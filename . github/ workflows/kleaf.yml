@@ -1,0 +1,53 @@
+diff --git a/.github/workflows/kleaf.yml b/.github/workflows/kleaf.yml
+new file mode 100644
+index 0000000..5d3b3a1
+--- /dev/null
++++ b/.github/workflows/kleaf.yml
+@@
++name: Build Kernel (Kleaf)
++
++on:
++  workflow_dispatch:
++
++jobs:
++  build:
++    runs-on: ubuntu-latest
++
++    steps:
++      - name: Checkout kernel source
++        uses: actions/checkout@v4
++
++      - name: Install dependencies
++        run: |
++          sudo apt-get update
++          sudo apt-get install -y build-essential clang lld git curl zip unzip bc
++
++      - name: Install Bazelisk (Bazel wrapper)
++        run: |
++          sudo curl -L -o /usr/local/bin/bazel https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-amd64
++          sudo chmod +x /usr/local/bin/bazel
++
++      - name: Clone Kleaf
++        run: |
++          set -eux
++          mkdir -p build/kernel
++          git clone --depth=1 https://android.googlesource.com/kernel/build build/kernel/build || true
++          ln -sf build/kernel/build/kleaf build/kernel/kleaf || true
++          mkdir -p build/kernel/build/kleaf
++          printf 'package(default_visibility = ["//visibility:public"])\n\nexports_files(glob(["**/*.bzl"]))\n' > build/kernel/build/kleaf/BUILD.bazel
++
++      - name: Ensure MODULE.bazel
++        run: |
++          if [ ! -f MODULE.bazel ]; then
++            printf 'module(name = "kernel_xiaomi_peridot", version = "1.0")\n\nbazel_dep(name = "bazel_skylib", version = "1.4.2")\n' > MODULE.bazel
++          fi
++
++      - name: Build kernel
++        run: |
++          bazel build //:kernel_xiaomi_peridot_dist
++
++      - name: Upload artifacts
++        uses: actions/upload-artifact@v4
++        with:
++          name: kernel-build-output
++          path: bazel-bin/*
