@@ -1,4 +1,4 @@
-name: Build Kernel Peridot Full
+name: Build Kernel 6.1 Peridot
 
 on:
   push:
@@ -9,50 +9,44 @@ jobs:
   build:
     runs-on: ubuntu-22.04
 
+    env:
+      ARCH: arm64
+      CROSS_COMPILE: aarch64-linux-gnu-
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup build dependencies
+      - name: Install build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             build-essential clang lld gcc-aarch64-linux-gnu \
-            bison flex libncurses5-dev libssl-dev git curl \
-            python3 python3-pip unzip
+            bc bison flex libncurses5-dev libssl-dev \
+            u-boot-tools device-tree-compiler git curl python3 python3-pip unzip
 
-      - name: Install Bazelisk
-        run: |
-          curl -LO "https://github.com/bazelbuild/bazelisk/releases/download/v1.23.0/bazelisk-linux-amd64"
-          chmod +x bazelisk-linux-amd64
-          sudo mv bazelisk-linux-amd64 /usr/local/bin/bazel
-          bazel version
+      - name: Setup output directory
+        run: mkdir -p out
 
-      - name: Ensure MODULE.bazel exists
+      - name: Build kernel
         run: |
-          if [ ! -f MODULE.bazel ]; then
-            echo 'module(name = "kernel_xiaomi_peridot", version = "1.0")' > MODULE.bazel
+          cd kernel
+          make peridot_defconfig
+          make -j$(nproc)
+          # Copy generated Image and dtb to out
+          cp arch/arm64/boot/Image.gz-dtb ../out/
+          if [ -f arch/arm64/boot/dtbo.img ]; then
+            cp arch/arm64/boot/dtbo.img ../out/
           fi
-
-      - name: Clone required subrepos
-        run: |
-          mkdir -p build/kernel
-          git clone --depth=1 https://android.googlesource.com/kernel/build build/kernel/build
-          if [ ! -d build/bazel_common_rules ]; then
-            git clone --depth=1 https://android.googlesource.com/kernel/bazel_common_rules build/bazel_common_rules
+          # Optionally pack boot.img (requires mkbootimg)
+          if command -v mkbootimg >/dev/null 2>&1; then
+            mkbootimg --kernel arch/arm64/boot/Image.gz-dtb \
+                      --ramdisk ramdisk.img \
+                      --output ../out/boot.img || true
           fi
-
-      - name: Create BUILD.bazel for kleaf
-        run: |
-          mkdir -p build/kernel/build/kleaf
-          echo 'exports_files(glob(["**/*.bzl"]))' > build/kernel/build/kleaf/BUILD.bazel
-
-      - name: Run Python Bazel build
-        run: |
-          python3 -u build.with.bazel.py
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: kernel-artifacts
-          path: out/**/*.img
+          path: out/
