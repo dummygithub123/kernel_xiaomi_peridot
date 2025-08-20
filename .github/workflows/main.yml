@@ -37,11 +37,6 @@ jobs:
           echo "ARCH=$ARCH" >> $GITHUB_ENV
           echo "CROSS_COMPILE=$CROSS_COMPILE" >> $GITHUB_ENV
 
-      # 4. Clean previous build (optional but recommended)
-      - name: Clean previous build
-        run: |
-          make O=out mrproper
-
       # 5. Configure Kernel (GKI)
       - name: Configure Kernel
         run: |
