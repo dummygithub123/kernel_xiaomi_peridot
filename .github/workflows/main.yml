@@ -1,0 +1,60 @@
+name: Build Kernel Peridot with Bazel (Full)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup build environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            git curl python3 python3-pip unzip build-essential \
+            clang lld gcc-aarch64-linux-gnu bison flex libncurses5-dev libssl-dev
+
+      - name: Install Bazelisk (Bazel wrapper)
+        run: |
+          curl -LO "https://github.com/bazelbuild/bazelisk/releases/download/v1.23.0/bazelisk-linux-amd64"
+          chmod +x bazelisk-linux-amd64
+          sudo mv bazelisk-linux-amd64 /usr/local/bazel
+
+      - name: Ensure MODULE.bazel exists
+        run: |
+          if [ ! -f MODULE.bazel ]; then
+            echo 'module(name = "kernel_xiaomi_peridot", version = "1.0")' > MODULE.bazel
+          fi
+
+      - name: Clone required subrepos
+        run: |
+          mkdir -p build/kernel
+          # Clone AOSP kernel build repo
+          git clone --depth=1 https://android.googlesource.com/kernel/build build/kernel/build
+          # Clone Bazel common rules if not exists
+          if [ ! -d build/bazel_common_rules ]; then
+            git clone --depth=1 https://android.googlesource.com/kernel/bazel_common_rules build/bazel_common_rules
+          fi
+
+      - name: Create minimal BUILD.bazel for kleaf
+        run: |
+          if [ ! -f build/kernel/build/kleaf/BUILD.bazel ]; then
+            mkdir -p build/kernel/build/kleaf
+            echo 'exports_files(glob(["**/*.bzl"]))' > build/kernel/build/kleaf/BUILD.bazel
+          fi
+
+      - name: Run Python Bazel build
+        run: |
+          python3 build_with_bazel.py
+
+      - name: Upload kernel artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-peridot-artifacts
+          path: out/**/*.img
