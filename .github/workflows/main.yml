@@ -1,0 +1,68 @@
+name: Build Kernel (Kleaf)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout kernel repo
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential bc bison flex git curl zip unzip lz4 zstd libssl-dev openjdk-17-jdk python3 python3-pip
+
+      - name: Setup Bazel (via Bazelisk)
+        uses: bazel-contrib/setup-bazel@0.15.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+
+      - name: Clone Kleaf infra
+        run: |
+          set -eux
+          mkdir -p build/kernel
+          git clone --depth=1 https://android.googlesource.com/kernel/build build/kernel/build
+          ln -sf build/kernel/build/kleaf build/kernel/kleaf
+          # Pastikan kleaf adalah Bazel package
+          if [ ! -f build/kernel/kleaf/BUILD.bazel ]; then
+            printf 'exports_files(glob(["**/*.bzl"]))\n' > build/kernel/kleaf/BUILD.bazel
+          fi
+
+      - name: Ensure MODULE.bazel exists
+        run: |
+          set -eux
+          if [ ! -f MODULE.bazel ]; then
+            : > MODULE.bazel
+            printf 'module(\n' >> MODULE.bazel
+            printf '    name = "kernel_xiaomi_peridot",\n' >> MODULE.bazel
+            printf '    version = "1.0",\n' >> MODULE.bazel
+            printf ')\n' >> MODULE.bazel
+            printf '\n' >> MODULE.bazel
+            printf 'bazel_dep(name = "bazel_skylib", version = "1.4.2")\n' >> MODULE.bazel
+            printf 'bazel_dep(name = "rules_cc", version = "0.0.8")\n' >> MODULE.bazel
+          fi
+          echo "=== MODULE.bazel ==="
+          cat MODULE.bazel
+
+      - name: Build kernel (Kleaf)
+        run: |
+          set -eux
+          echo ">>> Trying //:peridot_dist ..."
+          if ! bazel build //:peridot_dist --verbose_failures; then
+            echo ">>> Fallback to //:allmods_peridot ..."
+            bazel build //:allmods_peridot --verbose_failures
+          fi
+          echo "=== bazel-bin ==="
+          ls -lah bazel-bin || true
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-artifacts
+          path: bazel-bin/**
+          if-no-files-found: warn
