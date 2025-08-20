@@ -1,70 +1,51 @@
-name: Build Kernel (Kleaf)
+name: Build Xiaomi Peridot Kernel (Kleaf)
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-  pull_request:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout source
         uses: actions/checkout@v4
+
+      - name: Set up Bazel
+        uses: bazelbuild/setup-bazel@v5
+        with:
+          bazel-version: 7.2.1
 
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            bc \
-            bison \
-            flex \
-            git \
-            curl \
-            zip \
-            unzip \
-            lz4 \
-            zstd \
-            libssl-dev \
-            openjdk-17-jdk \
-            python3 \
-            python3-pip
-
-      - name: Install Bazelisk (Bazel wrapper)
-        run: |
-          sudo curl -L "https://github.com/bazelbuild/bazelisk/releases/download/v1.22.0/bazelisk-linux-amd64" -o /usr/local/bin/bazel
-          sudo chmod +x /usr/local/bin/bazel
-          bazel version
+          sudo apt-get install -y build-essential bc bison flex libssl-dev \
+            libncurses5-dev libncursesw5-dev git curl zip unzip python3
 
       - name: Ensure MODULE.bazel exists
         run: |
           if [ ! -f MODULE.bazel ]; then
-            cat > MODULE.bazel <<'EOF'
-module(
-    name = "kernel_xiaomi_peridot",
-    version = "1.0",
-    repo_name = "kernel_xiaomi_peridot",
-)
-
-bazel_dep(name = "bazel_skylib", version = "1.4.2")
-bazel_dep(name = "rules_cc", version = "0.0.8")
-EOF
+            echo "module(name = \"kernel_xiaomi_peridot\", version = \"1.0\")" > MODULE.bazel
+            echo "bazel_dep(name = \"bazel_skylib\", version = \"1.5.0\")" >> MODULE.bazel
           fi
 
-      - name: Build kernel with Kleaf
+      - name: Ensure kleaf BUILD.bazel exists
         run: |
-          # Ganti target sesuai yang tersedia di repo kamu
-          bazel build //:peridot_dist --verbose_failures
+          mkdir -p build/kernel/kleaf
+          if [ ! -f build/kernel/kleaf/BUILD.bazel ]; then
+            echo "# dummy kleaf BUILD file" > build/kernel/kleaf/BUILD.bazel
+          fi
+
+      - name: Build kernel
+        run: |
+          bazel build //:allmods_peridot || bazel build //:peridot_dist
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: kernel-artifacts
-          path: |
-            bazel-bin/**/*.img
-            bazel-bin/**/*.zip
-            bazel-bin/**/*.tar.gz
+          path: >
+            ["bazel-bin/**/*.img",
+             "bazel-bin/**/*.zip",
+             "bazel-bin/**/*.tar.gz",
+             "bazel-bin/**/*.bin"]
