@@ -2,54 +2,69 @@ name: Build Kernel (Kleaf)
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ "main" ]
-  pull_request:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout kernel repo
+        uses: actions/checkout@v4
 
-      - name: Setup Bazel (with Bazelisk)
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            bc \
+            bison \
+            flex \
+            git \
+            curl \
+            zip \
+            unzip \
+            lz4 \
+            zstd \
+            libssl-dev \
+            openjdk-17-jdk \
+            python3 \
+            python3-pip
+
+      - name: Setup Bazel (via Bazelisk)
         uses: bazel-contrib/setup-bazel@0.15.0
-        with:
-          bazelisk-cache: true
-          disk-cache: ${{ github.workflow }}
-          repository-cache: true
+
+      - name: Clone Kleaf infra
+        run: |
+          mkdir -p build/kernel
+          git clone --depth=1 https://android.googlesource.com/kernel/build build/kernel/build
+          ln -sf build/kernel/build/kleaf build/kernel/kleaf
 
       - name: Ensure MODULE.bazel exists
         run: |
           if [ ! -f MODULE.bazel ]; then
             cat > MODULE.bazel <<'EOF'
 module(
-  name = "kernel_xiaomi_peridot",
-  version = "1.0",
+    name = "kernel_xiaomi_peridot",
+    version = "1.0",
 )
 bazel_dep(name = "bazel_skylib", version = "1.4.2")
-bazel_dep(name = "rules_cc", version = "0.0.8")
 EOF
           fi
 
-      - name: Ensure kleaf BUILD.bazel exists
+      - name: Build kernel (Kleaf)
         run: |
-          mkdir -p build/kernel/kleaf
-          if [ ! -f build/kernel/kleaf/BUILD.bazel ]; then
-            echo "# Auto-created to satisfy Bazel package requirement" > build/kernel/kleaf/BUILD.bazel
+          set -e
+          echo ">>> Trying peridot_dist target..."
+          if ! bazel build //:peridot_dist --verbose_failures; then
+            echo ">>> peridot_dist failed, trying allmods_peridot..."
+            bazel build //:allmods_peridot --verbose_failures
           fi
 
-      - name: Build kernel
-        run: |
-          bazel build //:peridot_dist --verbose_failures || bazel build //:allmods_peridot --verbose_failures
-
-      - name: Upload artifacts
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: kernel-artifacts
-          path:
+          path: |
             bazel-bin/**/*.img
             bazel-bin/**/*.zip
             bazel-bin/**/*.tar.gz
-            bazel-bin/**/*.bin
