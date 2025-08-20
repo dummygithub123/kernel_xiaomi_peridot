@@ -1,50 +1,70 @@
-name: Build Kernel (Bazel)
+name: Build Kernel (Kleaf)
 
 on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
   workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup JDK 17 (required by Bazel)
-        uses: actions/setup-java@v3
-        with:
-          distribution: temurin
-          java-version: 17
-
-      - name: Install Bazelisk
+      - name: Install dependencies
         run: |
-          sudo curl -L https://github.com/bazelbuild/bazelisk/releases/download/v1.19.0/bazelisk-linux-amd64 -o /usr/local/bin/bazel
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            bc \
+            bison \
+            flex \
+            git \
+            curl \
+            zip \
+            unzip \
+            lz4 \
+            zstd \
+            libssl-dev \
+            openjdk-17-jdk \
+            python3 \
+            python3-pip
+
+      - name: Install Bazelisk (Bazel wrapper)
+        run: |
+          sudo curl -L "https://github.com/bazelbuild/bazelisk/releases/download/v1.22.0/bazelisk-linux-amd64" -o /usr/local/bin/bazel
           sudo chmod +x /usr/local/bin/bazel
+          bazel version
 
-      - name: Ensure BUILD.bazel for kleaf exists
+      - name: Ensure MODULE.bazel exists
         run: |
-          mkdir -p build/kernel/kleaf
-          if [ ! -f build/kernel/kleaf/BUILD.bazel ]; then
-            echo '# Auto-generated BUILD.bazel for Bazel package recognition' > build/kernel/kleaf/BUILD.bazel
-            echo 'exports_files(["common_kernels.bzl"])' >> build/kernel/kleaf/BUILD.bazel
+          if [ ! -f MODULE.bazel ]; then
+            cat > MODULE.bazel <<'EOF'
+module(
+    name = "kernel_xiaomi_peridot",
+    version = "1.0",
+    repo_name = "kernel_xiaomi_peridot",
+)
+
+bazel_dep(name = "bazel_skylib", version = "1.4.2")
+bazel_dep(name = "rules_cc", version = "0.0.8")
+EOF
           fi
 
-      - name: Run Bazel Build
+      - name: Build kernel with Kleaf
         run: |
-          echo "=== Starting kernel build ==="
-          bazel build //:peridot_dist || bazel build //:allmods_peridot
-          ls -lh bazel-bin || true
+          # Ganti target sesuai yang tersedia di repo kamu
+          bazel build //:peridot_dist --verbose_failures
 
-      - name: Upload boot.img artifact
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: boot-image
+          name: kernel-artifacts
           path: |
             bazel-bin/**/*.img
-            bazel-bin/**/boot.img
-          if-no-files-found: warn
+            bazel-bin/**/*.zip
+            bazel-bin/**/*.tar.gz
