@@ -64,7 +64,4 @@ EOF
         uses: actions/upload-artifact@v4
         with:
           name: kernel-artifacts
-          path: |
-            bazel-bin/**/*.img
-            bazel-bin/**/*.zip
-            bazel-bin/**/*.tar.gz
+          path: bazel-bin/**
