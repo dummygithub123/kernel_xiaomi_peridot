@@ -31,7 +31,7 @@ jobs:
       - name: Build kernel
         run: |
           cd kernel
-          make peridot_defconfig
+          make gki_defconfig
           make -j$(nproc)
           # Copy generated Image and dtb to out
           cp arch/arm64/boot/Image.gz-dtb ../out/
