@@ -1,0 +1,54 @@
+name: Build Xiaomi Peridot Kernel
+
+on:
+  push:
+    branches:
+      - main
+      - github-action-build
+  workflow_dispatch:
+
+jobs:
+  build-kernel:
+    runs-on: ubuntu-latest
+
+    env:
+      KERNEL_NAME: "peridot"
+      CROSS_COMPILE: "aarch64-linux-gnu-"
+      ARCH: "arm64"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential bc ccache libncurses5 libncurses5-dev git flex bison libssl-dev
+
+      - name: Setup Compiler (GCC AOSP)
+        run: |
+          git clone https://github.com/kdrag0n/proton-clang.git clang
+          export PATH=$(pwd)/clang/bin:$PATH
+
+      - name: Configure Kernel
+        run: |
+          make O=out $KERNEL_NAME_defconfig
+
+      - name: Build Kernel
+        run: |
+          make -j$(nproc) O=out \
+               CC=clang \
+               CROSS_COMPILE=aarch64-linux-gnu- \
+               LLVM=1
+
+      - name: Archive Kernel Image
+        run: |
+          mkdir -p kernel_build
+          cp out/arch/arm64/boot/Image.gz-dtb kernel_build/
+        shell: bash
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: kernel-image
+          path: kernel_build/
