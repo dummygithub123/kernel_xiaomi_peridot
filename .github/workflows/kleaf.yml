@@ -1,86 +1,48 @@
-name: Build Kernel with Kleaf
+name: Build Kernel (Kleaf)
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout kernel source
         uses: actions/checkout@v4
 
-      - name: Install minimal deps
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y curl unzip zip python3 git build-essential \
-            gcc g++ make pkg-config zlib1g-dev openjdk-11-jdk
+          sudo apt-get install -y build-essential clang lld git curl zip unzip bc
 
-      - name: Install Bazelisk (no sudo writes to /usr/local)
+      - name: Install Bazelisk (Bazel wrapper)
         run: |
-          mkdir -p "$HOME/bin"
-          curl -L https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-amd64 -o "$HOME/bin/bazel"
-          chmod +x "$HOME/bin/bazel"
-          echo "$HOME/bin" >> "$GITHUB_PATH"
-          bazel --version
+          sudo curl -L -o /usr/local/bin/bazel https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-amd64
+          sudo chmod +x /usr/local/bin/bazel
 
-      - name: Clone Kleaf infra (AOSP kernel/build) and ensure package
+      - name: Clone Kleaf
         run: |
           set -eux
           mkdir -p build/kernel
-          # clone (ignore failure if network glitch)
           git clone --depth=1 https://android.googlesource.com/kernel/build build/kernel/build || true
+          ln -sf build/kernel/build/kleaf build/kernel/kleaf || true
+          mkdir -p build/kernel/build/kleaf
+          # bikin BUILD.bazel (pakai printf, aman di YAML)
+          printf 'package(default_visibility = ["//visibility:public"])\n\nexports_files(glob(["**/*.bzl"]))\n' > build/kernel/build/kleaf/BUILD.bazel
 
-          # choose target kleaf dir: prefer build/kernel/build/kleaf if cloned, else fallback
-          if [ -d build/kernel/build/kleaf ]; then
-            TARGET_DIR="build/kernel/build/kleaf"
-          else
-            TARGET_DIR="build/kernel/kleaf"
-            mkdir -p "$TARGET_DIR"
-          fi
-
-          # ensure BUILD.bazel present and valid so Bazel treats it as package
-          if [ ! -f "$TARGET_DIR/BUILD.bazel" ]; then
-            printf 'package(default_visibility = ["//visibility:public"])\\n\\nexports_files([\"kernel.bzl\"])\\n\\nexports_files(glob([\"**/*.bzl\"]))\\n' > "$TARGET_DIR/BUILD.bazel"
-          fi
-
-      - name: Ensure MODULE.bazel exists (for bzlmod)
+      - name: Ensure MODULE.bazel
         run: |
-          set -eux
           if [ ! -f MODULE.bazel ]; then
-            printf 'module(\\n' > MODULE.bazel
-            printf '    name = \"kernel_xiaomi_peridot\",\\n' >> MODULE.bazel
-            printf '    version = \"1.0\",\\n' >> MODULE.bazel
-            printf ')\\n\\n' >> MODULE.bazel
-            printf 'bazel_dep(name = \"bazel_skylib\", version = \"1.4.2\")\\n' >> MODULE.bazel
-            printf 'bazel_dep(name = \"rules_cc\", version = \"0.0.8\")\\n' >> MODULE.bazel
-          fi
-          echo "=== MODULE.bazel ==="
-          cat MODULE.bazel
-
-      - name: Try build kernel (peridot targets fallback)
-        run: |
-          set -eux
-          # try common peridot targets (adjust if your repo has different names)
-          if bazel build //:peridot_dist --verbose_failures; then
-            echo "Built //:peridot_dist"
-          elif bazel build //:allmods_peridot --verbose_failures; then
-            echo "Built //:allmods_peridot"
-          elif bazel build //:kernel --verbose_failures; then
-            echo "Built //:kernel"
-          else
-            echo "No known target built; run 'bazel query //...' locally to list targets"
-            exit 1
+            printf 'module(name = "kernel_xiaomi_peridot", version = "1.0")\n\nbazel_dep(name = "bazel_skylib", version = "1.4.2")\n' > MODULE.bazel
           fi
 
-      - name: List bazel-bin and upload artifacts
+      - name: Build kernel
         run: |
-          echo "=== bazel-bin contents ==="
-          ls -lah bazel-bin || true
-        # upload artifact step below
+          bazel build //:kernel_xiaomi_peridot_dist
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: kernel-artifacts
-          path: bazel-bin/**
+          name: kernel-build-output
+          path: bazel-bin/*
