@@ -1,51 +1,55 @@
-name: Build Xiaomi Peridot Kernel (Kleaf)
+name: Build Kernel (Kleaf)
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ "main" ]
+  pull_request:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Bazel
-        uses: bazelbuild/setup-bazel@v5
+      - name: Setup Bazel (with Bazelisk)
+        uses: bazel-contrib/setup-bazel@0.15.0
         with:
-          bazel-version: 7.2.1
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential bc bison flex libssl-dev \
-            libncurses5-dev libncursesw5-dev git curl zip unzip python3
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}
+          repository-cache: true
 
       - name: Ensure MODULE.bazel exists
         run: |
           if [ ! -f MODULE.bazel ]; then
-            echo "module(name = \"kernel_xiaomi_peridot\", version = \"1.0\")" > MODULE.bazel
-            echo "bazel_dep(name = \"bazel_skylib\", version = \"1.5.0\")" >> MODULE.bazel
+            cat > MODULE.bazel <<'EOF'
+module(
+  name = "kernel_xiaomi_peridot",
+  version = "1.0",
+)
+bazel_dep(name = "bazel_skylib", version = "1.4.2")
+bazel_dep(name = "rules_cc", version = "0.0.8")
+EOF
           fi
 
       - name: Ensure kleaf BUILD.bazel exists
         run: |
           mkdir -p build/kernel/kleaf
           if [ ! -f build/kernel/kleaf/BUILD.bazel ]; then
-            echo "# dummy kleaf BUILD file" > build/kernel/kleaf/BUILD.bazel
+            echo "# Auto-created to satisfy Bazel package requirement" > build/kernel/kleaf/BUILD.bazel
           fi
 
       - name: Build kernel
         run: |
-          bazel build //:allmods_peridot || bazel build //:peridot_dist
+          bazel build //:peridot_dist --verbose_failures || bazel build //:allmods_peridot --verbose_failures
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: kernel-artifacts
-          path: >
-            ["bazel-bin/**/*.img",
-             "bazel-bin/**/*.zip",
-             "bazel-bin/**/*.tar.gz",
-             "bazel-bin/**/*.bin"]
+          path:
+            bazel-bin/**/*.img
+            bazel-bin/**/*.zip
+            bazel-bin/**/*.tar.gz
+            bazel-bin/**/*.bin
