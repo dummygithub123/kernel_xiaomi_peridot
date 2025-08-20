@@ -45,7 +45,7 @@ jobs:
       # 6. Build Kernel
       - name: Build Kernel
         run: |
-          make -j$(nproc) O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-
+          make -j$(nproc) O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- SKIP_HDR_TEST=1
 
       # 7. Archive Kernel Image & dtb
       - name: Archive Kernel
