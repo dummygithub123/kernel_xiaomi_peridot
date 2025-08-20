@@ -2,47 +2,60 @@ name: Build Kernel (Kleaf)
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout kernel source
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential clang lld git curl zip unzip bc
+          sudo apt-get install -y build-essential git clang lld python3
 
-      - name: Install Bazelisk (Bazel wrapper)
+      - name: Setup Bazelisk (Bazel wrapper)
         run: |
-          sudo curl -L -o /usr/local/bin/bazel https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-amd64
-          sudo chmod +x /usr/local/bin/bazel
+          curl -L https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-amd64 -o /usr/local/bin/bazel
+          chmod +x /usr/local/bin/bazel
 
-      - name: Clone Kleaf
+      - name: Clone Kleaf + bazel_common_rules
         run: |
-          set -eux
           mkdir -p build/kernel
-          git clone --depth=1 https://android.googlesource.com/kernel/build build/kernel/build || true
-          ln -sf build/kernel/build/kleaf build/kernel/kleaf || true
-          mkdir -p build/kernel/build/kleaf
-          # bikin BUILD.bazel (pakai printf, aman di YAML)
-          printf 'package(default_visibility = ["//visibility:public"])\n\nexports_files(glob(["**/*.bzl"]))\n' > build/kernel/build/kleaf/BUILD.bazel
+          # Bersihkan dulu biar tidak bentrok dengan sisa run sebelumnya
+          rm -rf build/kernel/kleaf build/kernel/build build/bazel_common_rules
+          
+          # Clone kernel build (Kleaf)
+          git clone --depth=1 https://android.googlesource.com/kernel/build build/kernel/build
+          ln -sf build/kernel/build/kleaf build/kernel/kleaf
+          
+          # Clone bazel_common_rules
+          git clone --depth=1 https://android.googlesource.com/kernel/bazel_common_rules build/bazel_common_rules
+          
+          # Tambah BUILD.bazel minimal supaya dikenali bazel
+          echo 'exports_files(glob(["**/*.bzl"]))' > build/kernel/kleaf/BUILD.bazel
+          echo 'exports_files(glob(["**/*.bzl"]))' > build/bazel_common_rules/BUILD.bazel
 
-      - name: Ensure MODULE.bazel
+      - name: Prepare MODULE.bazel
         run: |
-          if [ ! -f MODULE.bazel ]; then
-            printf 'module(name = "kernel_xiaomi_peridot", version = "1.0")\n\nbazel_dep(name = "bazel_skylib", version = "1.4.2")\n' > MODULE.bazel
-          fi
+          cat > MODULE.bazel <<'EOF'
+module(
+    name = "kernel_xiaomi_peridot",
+    version = "1.0",
+)
+bazel_dep(name = "bazel_skylib", version = "1.4.2")
+local_path_override(
+    module_name = "bazel_common_rules",
+    path = "build/bazel_common_rules",
+)
+EOF
 
       - name: Build kernel
         run: |
-          bazel build //:kernel_xiaomi_peridot_dist
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: kernel-build-output
-          path: bazel-bin/*
+          bazel build //:kernel_xiaomi_peridot_dist --verbose_failures --sandbox_debug
