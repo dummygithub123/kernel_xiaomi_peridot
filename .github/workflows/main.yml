@@ -32,7 +32,7 @@ jobs:
 
       - name: Configure Kernel
         run: |
-          make O=out $KERNEL_NAME_defconfig
+          make O=out gki_defconfig
 
       - name: Build Kernel
         run: |
