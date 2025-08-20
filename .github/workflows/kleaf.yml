@@ -42,13 +42,11 @@ jobs:
       - name: Ensure MODULE.bazel exists
         run: |
           if [ ! -f MODULE.bazel ]; then
-            cat > MODULE.bazel <<'EOF'
-module(
+            echo 'module(
     name = "kernel_xiaomi_peridot",
     version = "1.0",
 )
-bazel_dep(name = "bazel_skylib", version = "1.4.2")
-EOF
+bazel_dep(name = "bazel_skylib", version = "1.4.2")' > MODULE.bazel
           fi
 
       - name: Build kernel (Kleaf)
@@ -64,7 +62,4 @@ EOF
         uses: actions/upload-artifact@v4
         with:
           name: kernel-artifacts
-          path: |
-            bazel-bin/**/*.img
-            bazel-bin/**/*.zip
-            bazel-bin/**/*.tar.gz
+          path: bazel-bin/**
