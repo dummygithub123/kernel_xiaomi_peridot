@@ -1,10 +1,8 @@
-name: Build Kernel (Kleaf)
+name: Kernel Build (Kleaf)
 
 on:
-  workflow_dispatch:
   push:
-    branches:
-      - main
+    branches: [ main ]
   pull_request:
 
 jobs:
@@ -12,13 +10,8 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout
+      - name: Checkout source
         uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential git clang lld python3
 
       - name: Setup Bazelisk (Bazel wrapper)
         run: |
@@ -26,29 +19,31 @@ jobs:
           curl -L https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-amd64 -o $HOME/bin/bazel
           chmod +x $HOME/bin/bazel
           echo "$HOME/bin" >> $GITHUB_PATH
+          bazel version
 
-      - name: Clone Kleaf + bazel_common_rules
+      - name: Clone Bazel common rules
         run: |
+          rm -rf build/bazel_common_rules
+          git clone --depth=1 https://android.googlesource.com/kernel/bazel/common_rules build/bazel_common_rules
+
+      - name: Clone Kleaf
+        run: |
+          rm -rf build/kernel
           mkdir -p build/kernel
-          rm -rf build/kernel/kleaf build/kernel/build build/bazel_common_rules
           git clone --depth=1 https://android.googlesource.com/kernel/build build/kernel/build
           ln -sf build/kernel/build/kleaf build/kernel/kleaf
-          git clone --depth=1 https://android.googlesource.com/kernel/bazel_common_rules build/bazel_common_rules
-          echo 'exports_files(glob(["**/*.bzl"]))' > build/kernel/kleaf/BUILD.bazel
-          echo 'exports_files(glob(["**/*.bzl"]))' > build/bazel_common_rules/BUILD.bazel
-
-      - name: Prepare MODULE.bazel
-        run: |
-          echo 'module(' > MODULE.bazel
-          echo '    name = "kernel_xiaomi_peridot",' >> MODULE.bazel
-          echo '    version = "1.0",' >> MODULE.bazel
-          echo ')' >> MODULE.bazel
-          echo 'bazel_dep(name = "bazel_skylib", version = "1.4.2")' >> MODULE.bazel
-          echo 'local_path_override(' >> MODULE.bazel
-          echo '    module_name = "bazel_common_rules",' >> MODULE.bazel
-          echo '    path = "build/bazel_common_rules",' >> MODULE.bazel
-          echo ')' >> MODULE.bazel
+          mkdir -p build/kernel/kleaf
+          cat > build/kernel/kleaf/BUILD.bazel <<'EOF'
+package(default_visibility = ["//visibility:public"])
+exports_files(glob(["**/*.bzl"]))
+EOF
 
       - name: Build kernel
         run: |
-          bazel build //:kernel_xiaomi_peridot_dist --verbose_failures --sandbox_debug
+          bazel build //:kernel_xiaomi_peridot_dist --verbose_failures
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-build
+          path: bazel-bin/**/*.img
